@@ -16,7 +16,17 @@ LiquidCrystal_I2C lcd(0x27, 16, 2); // Указываем I2C адрес (наи
 //а также параметры экрана (в случае LCD 1602 - 2 строки по 16 символов в каждой
 String author = "legavaz@gmail.com";
 String Version = "NF_23-12-20";
+//пин переменного сопротивление
 int analogPin = 0;
+
+//пин реле вентилятора 12 вольт
+int V_Pin = 4;
+//пин реле компрессора
+int K_Pin = 3;
+//пин реле тена
+int T_Pin = 2;
+
+
 int raw = 0;
 int temp = 0;
 int Vin = 5;
@@ -25,6 +35,7 @@ float R1 = 50000;
 float R2 = 0;
 float buffer = 0;
 int  Debug = 1;
+int flag = 1;
 
 
 // --------- SETUP ----------
@@ -49,6 +60,21 @@ void loop()
   //вывод информации на экран
   lcd_print();
 
+  if (temp >= 27)
+  {
+    flag = 0;
+    digitalWrite(V_Pin, HIGH);
+    digitalWrite(K_Pin, HIGH);
+    digitalWrite(T_Pin, HIGH);
+  }
+  else
+  {
+    digitalWrite(V_Pin, LOW);
+    digitalWrite(K_Pin, LOW);
+    digitalWrite(T_Pin, LOW);
+    delay(2000);
+    flag = 1;
+  }
 
 
 }
@@ -90,6 +116,9 @@ void debug_info()
     Serial.print("temp: ");
     Serial.println(temp);
 
+    Serial.print("flag: ");
+    Serial.println(flag);
+
   }
 
 }
@@ -105,7 +134,7 @@ void lcd_init()
   lcd.setCursor(0, 1);        // Установка курсора в начало первой строки
   lcd.print(author);         // вывод авторства
 
-  
+
   delay(2000);
 
 }
