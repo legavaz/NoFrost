@@ -26,6 +26,12 @@ int analogPin = 0;
 //пин реле тена
 #define T_Pin 2
 
+//переменные для расчета температуры с термистора
+#define RESIST_BASE 9800   // сопротивление при TEMP_BASE градусах по Цельсию (Ом)
+#define TEMP_BASE 25        // температура, при которой измерено RESIST_BASE (градусов Цельсия)
+#define RESIST_50K 50000    // точное сопротивление 10к резистора (Ом)
+#define BETA_COEF1 3435 
+
 
 int raw = 0;
 int temp = 0;
@@ -129,25 +135,36 @@ void Vent(boolean upr_signal)
 
 int return_temp()
 {
+   float thermistor;
+   
   //  обнуление переменной сопротивления
   R2 = 0;
   //  чтение данных с аналогового пина
-  raw = analogRead(analogPin);
-  if (raw)
-  {
-    buffer = raw * Vin;
-    Vout = (buffer) / 1024.0;
-    buffer = (Vin / Vout) - 1;
-    R2 = R1 * buffer;
-  }
+  int resistance = analogRead(analogPin);
+  R2 = resistance;
+ 
+  thermistor = RESIST_50K / ((float)1024 / resistance - 1);
+  thermistor /= RESIST_BASE;                        // (R/Ro)
+  thermistor = log(thermistor) / BETA_COEF1;            // 1/B * ln(R/Ro)
+  thermistor += (float)1.0 / (TEMP_BASE + 273.15);  // + (1/To)
+  thermistor = (float)1.0 / thermistor - 273.15;    // инвертируем и конвертируем в градусы по Цельсию
 
-  int temp = 999;
-  temp = R2 * 0.00009058;
-  if (R2 < 100000)
-  {
-    temp = -temp;
-  }
-  return temp;
+  
+//  if (raw)
+//  {
+//    buffer = raw * Vin;
+//    Vout = (buffer) / 1024.0;
+//    buffer = (Vin / Vout) - 1;
+//    R2 = R1 * buffer;
+//  }
+//
+//  int temp = 999;
+//  temp = R2 * 0.00009058;
+//  if (R2 < 100000)
+//  {
+//    temp = -temp;
+//  }
+  return thermistor;
 }
 
 void debug_info()
