@@ -20,11 +20,11 @@ String Version = "NF_23-12-20";
 int analogPin = 0;
 
 //пин реле вентилятора 12 вольт
-int V_Pin = 4;
+#define V_Pin 5
 //пин реле компрессора
-int K_Pin = 3;
+#define K_Pin 3
 //пин реле тена
-int T_Pin = 2;
+#define T_Pin 2
 
 
 int raw = 0;
@@ -34,16 +34,27 @@ float Vout = 0;
 float R1 = 50000;
 float R2 = 0;
 float buffer = 0;
-int  Debug = 1;
-int flag = 1;
+boolean Debug = 1;
+boolean flag = 0;
 
 
 // --------- SETUP ----------
 void setup()
 {
   lcd_init();
+  pinMode(V_Pin, OUTPUT);
+  pinMode(K_Pin, OUTPUT);
+  pinMode(T_Pin, OUTPUT);
 
-  Serial.begin(9600);
+  //принудительно выключаем все реле
+  Kompressor(0);
+  Ten_warm(0);
+  Vent(0);
+
+  if (Debug)
+  {
+    Serial.begin(9600);
+  }
 }
 
 // ---------- LOOP ----------
@@ -52,7 +63,7 @@ void loop()
   delay(1000);
 
   //чтение температуры
-  temp = ret_temp();
+  temp = return_temp();
 
   //  вывод отладочной информации
   debug_info();
@@ -60,28 +71,63 @@ void loop()
   //вывод информации на экран
   lcd_print();
 
-  if (temp >= 27)
-  {
-    flag = 0;
-    digitalWrite(V_Pin, HIGH);
-    digitalWrite(K_Pin, HIGH);
-    digitalWrite(T_Pin, HIGH);
-  }
-  else
-  {
-    digitalWrite(V_Pin, LOW);
-    digitalWrite(K_Pin, LOW);
-    digitalWrite(T_Pin, LOW);
-    delay(2000);
-    flag = 1;
-  }
+
+  flag = !flag;
+  Kompressor(flag);
+  Ten_warm(flag);
+  Vent(flag);
+
 
 
 }
 
 // --------- ФУНКЦИИ --------
+//upr_signal - 1 вкл., 0 - выкл
+//реле обратное включение от 0
+void Kompressor(boolean upr_signal)
+{
+  boolean invert = 1;
+  if (invert)
+  {
+    digitalWrite(K_Pin, !upr_signal);
+  }
+  else
+  {
+    digitalWrite(K_Pin, upr_signal);
+  }
+}
 
-int ret_temp()
+//upr_signal - 1 вкл., 0 - выкл
+//реле обратное включение от 0
+void Ten_warm(boolean upr_signal)
+{
+  boolean invert = 1;
+  if (invert)
+  {
+    digitalWrite(T_Pin, !upr_signal);
+  }
+  else
+  {
+    digitalWrite(T_Pin, upr_signal);
+  }
+}
+
+//upr_signal - 1 вкл., 0 - выкл
+//реле обратное включение от 0
+void Vent(boolean upr_signal)
+{
+  boolean invert = 0;
+  if (invert)
+  {
+    digitalWrite(V_Pin, !upr_signal);
+  }
+  else
+  {
+    digitalWrite(V_Pin, upr_signal);
+  }
+}
+
+int return_temp()
 {
   //  обнуление переменной сопротивления
   R2 = 0;
@@ -154,5 +200,11 @@ void lcd_print()
   lcd.print("t:");
   lcd.setCursor(3, 1);
   lcd.print(temp);
+
+  //  вывод градусов
+  lcd.setCursor(10, 1);
+  lcd.print("F:");
+  lcd.setCursor(12, 1);
+  lcd.print(flag);
 
 }
