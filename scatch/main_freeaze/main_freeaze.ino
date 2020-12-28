@@ -137,33 +137,16 @@ int return_temp()
 {
    float thermistor;
    
-  //  обнуление переменной сопротивления
-  R2 = 0;
   //  чтение данных с аналогового пина
   int resistance = analogRead(analogPin);
   R2 = resistance;
  
   thermistor = RESIST_50K / ((float)1024 / resistance - 1);
   thermistor /= RESIST_BASE;                        // (R/Ro)
-  thermistor = log(thermistor) / BETA_COEF1;            // 1/B * ln(R/Ro)
+  thermistor = log(thermistor) / BETA_COEF1;        // 1/B * ln(R/Ro)
   thermistor += (float)1.0 / (TEMP_BASE + 273.15);  // + (1/To)
   thermistor = (float)1.0 / thermistor - 273.15;    // инвертируем и конвертируем в градусы по Цельсию
 
-  
-//  if (raw)
-//  {
-//    buffer = raw * Vin;
-//    Vout = (buffer) / 1024.0;
-//    buffer = (Vin / Vout) - 1;
-//    R2 = R1 * buffer;
-//  }
-//
-//  int temp = 999;
-//  temp = R2 * 0.00009058;
-//  if (R2 < 100000)
-//  {
-//    temp = -temp;
-//  }
   return thermistor;
 }
 
