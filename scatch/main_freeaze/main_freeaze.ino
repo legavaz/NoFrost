@@ -1,4 +1,3 @@
-
 /*
   Lega_dvi:23-12-2020
   скетч создан для работы холодилника по принципам NOFROST
@@ -10,38 +9,35 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h> // Подключение библиотеки
 
-
 // ------- ПЕРЕМЕННЫЕ -------
 LiquidCrystal_I2C lcd(0x27, 16, 2); // Указываем I2C адрес (наиболее распространенное значение),
 //а также параметры экрана (в случае LCD 1602 - 2 строки по 16 символов в каждой
 String author = "legavaz@gmail.com";
-String Version = "NF_23-12-20";
-//пин переменного сопротивление
-int analogPin = 0;
+String Version = "NF_29-12-20";
 
-//пин реле вентилятора 12 вольт
-#define V_Pin 5
-//пин реле компрессора
-#define K_Pin 3
-//пин реле тена
-#define T_Pin 2
+#define analogPin 0 //пин переменного сопротивление
+#define V_Pin 5     //пин реле вентилятора 12 вольт
+#define K_Pin 3     //пин реле компрессора
+#define T_Pin 2     //пин реле тена
 
 //переменные для расчета температуры с термистора
 #define RESIST_BASE 9800   // сопротивление при TEMP_BASE градусах по Цельсию (Ом)
-#define TEMP_BASE 25        // температура, при которой измерено RESIST_BASE (градусов Цельсия)
-#define RESIST_50K 50000    // точное сопротивление 10к резистора (Ом)
-#define BETA_COEF1 3435 
+#define TEMP_BASE 25       // температура, при которой измерено RESIST_BASE (градусов Цельсия)
+#define RESIST_50K 50000   // точное сопротивление 10к резистора (Ом)
+#define BETA_COEF1 3435
 
-
-int raw = 0;
-int temp = 0;
-int Vin = 5;
-float Vout = 0;
-float R1 = 50000;
-float R2 = 0;
-float buffer = 0;
+int temp = 0;       //значение текущей температуры
+String s_status = "k-/v-/t-";;
+int temp_max = 30;  //максимальная температура выключения компрессора и включения тэнов
+int temp_min = 25;  //минимальная температура
+unsigned long period_ten_timer = (long)5  * 60 * 1000; //время работы тэна 5 минут
+unsigned long ten_timer; //переменная хранения таймера запуска тэна
+boolean ten_on = 0;
 boolean Debug = 1;
-boolean flag = 0;
+boolean work_flag = 0;
+
+#define len_arr 30
+int temp_arr[len_arr]; // массив для расчета средней температуры
 
 
 // --------- SETUP ----------
@@ -57,6 +53,8 @@ void setup()
   Ten_warm(0);
   Vent(0);
 
+  reset_arr(); // заполним массив значениями по умолчанию для чистоты расчета
+
   if (Debug)
   {
     Serial.begin(9600);
@@ -68,8 +66,51 @@ void loop()
 {
   delay(1000);
 
+
+  
   //чтение температуры
-  temp = return_temp();
+  temp = return_avg_temp();
+
+  if (ten_on
+      and work_flag)
+  {
+    //    ождаем пока пройдет установленное время нагрева тэна
+    if ( millis() - ten_timer >= period_ten_timer) {
+      //прошло установленное количество времени выключаем тэн
+      Ten_warm(0);
+      ten_timer = 0;
+      ten_on = 0;
+    }
+  }
+  else
+  { //продолжение обычного рабочего цикла
+    if (work_flag and temp <= temp_min)
+    { //отключаем компрессор и тэн включаем
+      s_status  = "k0/v0/t1";
+      Kompressor(0);
+      Vent(0);
+      //включение тэна и таймера отключения
+      Ten_warm(1);
+      ten_on = 1;
+      ten_timer = millis();
+
+    }
+    else if (work_flag and temp >= temp_max)
+    { //отключаем тэн и включаем компрессор+вентилятор
+      s_status  = "k1/v1/t0";
+      Ten_warm(0);
+      Kompressor(1);
+      Vent(1);
+    }
+    else if (work_flag)
+    { //оставляем только вентилятор
+      s_status  = "k0/v1/t0";
+      Ten_warm(0);
+      Kompressor(0);
+      Vent(1);
+    }
+  }
+
 
   //  вывод отладочной информации
   debug_info();
@@ -77,17 +118,70 @@ void loop()
   //вывод информации на экран
   lcd_print();
 
+}
 
-  flag = !flag;
-  Kompressor(flag);
-  Ten_warm(flag);
-  Vent(flag);
+// --------- ФУНКЦИИ --------
 
+int aver_temp()
+{
+  int summ = 0;
+  int parity = 0;
+  for (int i = 0; i < len_arr; i++)
+  {
+    if (temp_arr[i] < 99)
+    {
+      summ = summ + temp_arr[i];
+      parity += 1;
+    }
+
+  }
+
+  //рабочий режим включается при 90% накоплении статистики по температуре
+  if (len_arr * 0.9 <= parity) {
+    work_flag = 1;
+  }
+
+  return summ / parity;
+
+}
+
+void reset_arr()
+{
+  for (int i = 0; i < sizeof(temp_arr) / sizeof(int); i++)
+  {
+    temp_arr[i] = 99;
+  }
+
+}
+
+void print_arr()
+{
+  Serial.print("temp_arr: ");
+
+  for (int i = 0; i < sizeof(temp_arr) / sizeof(int); i++)
+  {
+    Serial.print(";");
+    Serial.print(temp_arr[i]);
+  }
+
+  Serial.println();
+
+}
+
+void add_array(int m_temp)
+{
+
+  for (int i = 0; i < (len_arr - 1); i++)
+  {
+    temp_arr[i] = temp_arr[i + 1];
+  }
+
+  temp_arr[len_arr - 1] = m_temp;
 
 
 }
 
-// --------- ФУНКЦИИ --------
+
 //upr_signal - 1 вкл., 0 - выкл
 //реле обратное включение от 0
 void Kompressor(boolean upr_signal)
@@ -133,14 +227,23 @@ void Vent(boolean upr_signal)
   }
 }
 
+int return_avg_temp()
+{
+  temp = return_temp();
+  add_array(temp);
+  temp = aver_temp();
+
+  return temp;
+}
+
+
 int return_temp()
 {
-   float thermistor;
-   
+  float thermistor;
+
   //  чтение данных с аналогового пина
   int resistance = analogRead(analogPin);
-  R2 = resistance;
- 
+
   thermistor = RESIST_50K / ((float)1024 / resistance - 1);
   thermistor /= RESIST_BASE;                        // (R/Ro)
   thermistor = log(thermistor) / BETA_COEF1;        // 1/B * ln(R/Ro)
@@ -154,16 +257,26 @@ void debug_info()
 {
   if (Debug)
   {
-    Serial.print("Vout: ");
-    Serial.println(Vout);
-    Serial.print("R2: ");
-    Serial.println(R2);
+
+    Serial.print("status: ");
+    Serial.println(s_status);
 
     Serial.print("temp: ");
     Serial.println(temp);
 
-    Serial.print("flag: ");
-    Serial.println(flag);
+//    Serial.print("w_f: ");
+//    Serial.println(work_flag);
+
+    Serial.print("period_ten_timer: ");
+    Serial.println(period_ten_timer);
+//    Serial.print("ten_on: ");
+//    Serial.println(ten_on);
+    Serial.print("ten_timer: ");
+    Serial.println(ten_timer);
+    Serial.print("millis(): ");
+    Serial.println(millis());
+
+//    print_arr();
 
   }
 
@@ -180,20 +293,17 @@ void lcd_init()
   lcd.setCursor(0, 1);        // Установка курсора в начало первой строки
   lcd.print(author);         // вывод авторства
 
-
   delay(2000);
-
 }
 
 void lcd_print()
 {
   lcd.clear();
-
-  //  вывод значения сопротивленя
+  //  вывод статуса
   lcd.setCursor(0, 0);
-  lcd.print("R:");
-  lcd.setCursor(3, 0);
-  lcd.print(int(R2 / 1000));
+  lcd.print("S:");
+  lcd.setCursor(2, 0);
+  lcd.print(s_status);
 
   //  вывод градусов
   lcd.setCursor(0, 1);
@@ -203,8 +313,8 @@ void lcd_print()
 
   //  вывод градусов
   lcd.setCursor(10, 1);
-  lcd.print("F:");
-  lcd.setCursor(12, 1);
-  lcd.print(flag);
+  lcd.print("WF:");
+  lcd.setCursor(13, 1);
+  lcd.print(work_flag);
 
 }
