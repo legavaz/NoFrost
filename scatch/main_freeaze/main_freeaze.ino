@@ -13,7 +13,7 @@
 LiquidCrystal_I2C lcd(0x27, 16, 2); // Указываем I2C адрес (наиболее распространенное значение),
 //а также параметры экрана (в случае LCD 1602 - 2 строки по 16 символов в каждой
 String author = "legavaz@gmail.com";
-String Version = "NF_29-12-20";
+String Version = "NF_30-12-20";
 
 #define analogPin 0 //пин переменного сопротивление
 #define V_Pin 5     //пин реле вентилятора 12 вольт
@@ -27,14 +27,18 @@ String Version = "NF_29-12-20";
 #define BETA_COEF1 3435
 
 int temp = 0;       //значение текущей температуры
-String s_status = "k-/v-/t-";;
+String s_status = "k-/v-/t-";
 int temp_max = 30;  //максимальная температура выключения компрессора и включения тэнов
 int temp_min = 25;  //минимальная температура
-unsigned long period_ten_timer = (long)5  * 60 * 1000; //время работы тэна 5 минут
+int period_ten_timer = 5 * 60; //время работы тэна 5 минут ()
 unsigned long ten_timer; //переменная хранения таймера запуска тэна
 boolean ten_on = 0;
-boolean Debug = 1;
+boolean k_on = 0;
+boolean v_on = 0;
+
+boolean Debug = 1; //флаг отладки
 boolean work_flag = 0;
+
 
 #define len_arr 30
 int temp_arr[len_arr]; // массив для расчета средней температуры
@@ -49,9 +53,9 @@ void setup()
   pinMode(T_Pin, OUTPUT);
 
   //принудительно выключаем все реле
-  Kompressor(0);
-  Ten_warm(0);
-  Vent(0);
+  Kompressor_rele(0);
+  Ten_warm_rele(0);
+  Vent_rele(0);
 
   reset_arr(); // заполним массив значениями по умолчанию для чистоты расчета
 
@@ -66,51 +70,19 @@ void loop()
 {
   delay(1000);
 
-
-  
   //чтение температуры
   temp = return_avg_temp();
 
-  if (ten_on
-      and work_flag)
-  {
-    //    ождаем пока пройдет установленное время нагрева тэна
-    if ( millis() - ten_timer >= period_ten_timer) {
-      //прошло установленное количество времени выключаем тэн
-      Ten_warm(0);
-      ten_timer = 0;
-      ten_on = 0;
-    }
+  //ОСНОВНАЯ ЛОГИКА ПРОГРАММЫ
+  if (temp >= temp_max) {
+    Kompressor(1);
   }
-  else
-  { //продолжение обычного рабочего цикла
-    if (work_flag and temp <= temp_min)
-    { //отключаем компрессор и тэн включаем
-      s_status  = "k0/v0/t1";
-      Kompressor(0);
-      Vent(0);
-      //включение тэна и таймера отключения
-      Ten_warm(1);
-      ten_on = 1;
-      ten_timer = millis();
-
-    }
-    else if (work_flag and temp >= temp_max)
-    { //отключаем тэн и включаем компрессор+вентилятор
-      s_status  = "k1/v1/t0";
-      Ten_warm(0);
-      Kompressor(1);
-      Vent(1);
-    }
-    else if (work_flag)
-    { //оставляем только вентилятор
-      s_status  = "k0/v1/t0";
-      Ten_warm(0);
-      Kompressor(0);
-      Vent(1);
-    }
+  else if (temp <= temp_min) {
+    Kompressor(0);
   }
 
+  //оформление текущих статусов для информации
+  s_status = "k" + String(k_on) + "/v" + String(v_on) + "/t" + String(ten_on);
 
   //  вывод отладочной информации
   debug_info();
@@ -128,7 +100,7 @@ int aver_temp()
   int parity = 0;
   for (int i = 0; i < len_arr; i++)
   {
-    if (temp_arr[i] < 99)
+    if (temp_arr[i] > -50)
     {
       summ = summ + temp_arr[i];
       parity += 1;
@@ -149,7 +121,7 @@ void reset_arr()
 {
   for (int i = 0; i < sizeof(temp_arr) / sizeof(int); i++)
   {
-    temp_arr[i] = 99;
+    temp_arr[i] = -50;
   }
 
 }
@@ -182,11 +154,66 @@ void add_array(int m_temp)
 }
 
 
+void Kompressor(boolean m_value)
+{
+
+  //    # сигнал на отключение компрессора
+  //    # до этого компрессор был включен
+  //    # и тен не работал
+  if (k_on == 1 and m_value == 0 and ten_on == 0)
+  {
+    Kompressor_rele(m_value);
+    Vent_rele(0);
+    Ten_warm(1);
+  }
+  //    # сигнал на включение компрессора
+  //    # до этого компрессор был выключен
+  //    # и тен не работал
+  else if (k_on == 0 and m_value == 1 and ten_on == 0)
+  {
+    Kompressor_rele(m_value);
+    Vent_rele(1);
+  }
+  else
+  {
+    Ten_warm(0);
+  }
+}
+
+void Ten_warm(boolean m_value)
+{
+
+  if (m_value == 1)
+  {
+    ten_timer = millis();
+    Vent_rele(0);
+    Ten_warm(m_value);
+  }
+  else if (m_value == 0)
+  {
+    if (ten_timer != 0 and ten_on == 1)
+    {
+      int r_timer = (millis() - ten_timer) / 1000;
+      if (Debug) {
+        Serial.print("прошло времени (сек): ");
+        Serial.println(r_timer);
+      }
+      if (r_timer >= period_ten_timer)
+      {
+        Ten_warm_rele(m_value);
+        Vent_rele(1);
+      }
+    }
+  }
+}
+
 //upr_signal - 1 вкл., 0 - выкл
 //реле обратное включение от 0
-void Kompressor(boolean upr_signal)
+void Kompressor_rele(boolean upr_signal)
 {
   boolean invert = 1;
+  k_on = upr_signal;
+
   if (invert)
   {
     digitalWrite(K_Pin, !upr_signal);
@@ -197,11 +224,14 @@ void Kompressor(boolean upr_signal)
   }
 }
 
+
+
 //upr_signal - 1 вкл., 0 - выкл
 //реле обратное включение от 0
-void Ten_warm(boolean upr_signal)
+void Ten_warm_rele(boolean upr_signal)
 {
   boolean invert = 1;
+  ten_on = upr_signal;
   if (invert)
   {
     digitalWrite(T_Pin, !upr_signal);
@@ -214,9 +244,11 @@ void Ten_warm(boolean upr_signal)
 
 //upr_signal - 1 вкл., 0 - выкл
 //реле обратное включение от 0
-void Vent(boolean upr_signal)
+void Vent_rele(boolean upr_signal)
 {
   boolean invert = 0;
+  v_on = upr_signal;
+
   if (invert)
   {
     digitalWrite(V_Pin, !upr_signal);
@@ -264,19 +296,19 @@ void debug_info()
     Serial.print("temp: ");
     Serial.println(temp);
 
-//    Serial.print("w_f: ");
-//    Serial.println(work_flag);
+    //    Serial.print("w_f: ");
+    //    Serial.println(work_flag);
 
-    Serial.print("period_ten_timer: ");
-    Serial.println(period_ten_timer);
-//    Serial.print("ten_on: ");
-//    Serial.println(ten_on);
+    //    Serial.print("period_ten_timer: ");
+    //    Serial.println(period_ten_timer);
+    //    Serial.print("ten_on: ");
+    //    Serial.println(ten_on);
     Serial.print("ten_timer: ");
     Serial.println(ten_timer);
     Serial.print("millis(): ");
     Serial.println(millis());
 
-//    print_arr();
+    //    print_arr();
 
   }
 
@@ -298,6 +330,9 @@ void lcd_init()
 
 void lcd_print()
 {
+
+
+
   lcd.clear();
   //  вывод статуса
   lcd.setCursor(0, 0);
