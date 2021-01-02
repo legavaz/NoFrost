@@ -13,7 +13,7 @@
 LiquidCrystal_I2C lcd(0x27, 16, 2); // Указываем I2C адрес (наиболее распространенное значение),
 //а также параметры экрана (в случае LCD 1602 - 2 строки по 16 символов в каждой
 String author = "legavaz@gmail.com";
-String Version = "NF_30-12-20";
+String Version = "NF_02-01-21";
 
 #define analogPin 0 //пин переменного сопротивление
 #define V_Pin 5     //пин реле вентилятора 12 вольт
@@ -28,8 +28,6 @@ String Version = "NF_30-12-20";
 
 int temp = 0;       //значение текущей температуры
 String s_status = "k-/v-/t-";
-int temp_max = 30;  //максимальная температура выключения компрессора и включения тэнов
-int temp_min = 25;  //минимальная температура
 int period_ten_timer = 5 * 60; //время работы тэна 5 минут ()
 unsigned long ten_timer; //переменная хранения таймера запуска тэна
 boolean ten_on = 0;
@@ -39,9 +37,11 @@ boolean v_on = 0;
 boolean Debug = 1; //флаг отладки
 boolean work_flag = 0;
 
-
-#define len_arr 30
+#define len_arr 30 //размерность массива 
 int temp_arr[len_arr]; // массив для расчета средней температуры
+int temp_max = 30;  //максимальная температура выключения компрессора и включения тэнов
+int temp_min = 25;  //минимальная температура
+
 
 
 // --------- SETUP ----------
@@ -187,7 +187,7 @@ void Ten_warm(boolean m_value)
   {
     ten_timer = millis();
     Vent_rele(0);
-    Ten_warm(m_value);
+    Ten_warm_rele(m_value);
   }
   else if (m_value == 0)
   {
@@ -331,25 +331,36 @@ void lcd_init()
 void lcd_print()
 {
 
-
-
   lcd.clear();
+
+  /*ПЕРВАЯ СТРОКА*/
+  
   //  вывод статуса
   lcd.setCursor(0, 0);
   lcd.print("S:");
   lcd.setCursor(2, 0);
   lcd.print(s_status);
 
-  //  вывод градусов
+  //  вывод рабочего флага
+  lcd.setCursor(12, 0);
+  lcd.print("WF:");
+  lcd.setCursor(15, 1);
+  lcd.print(work_flag);
+
+  /*ВТОРАЯ СТРОКА*/
+
+    //  вывод градусов
   lcd.setCursor(0, 1);
   lcd.print("t:");
   lcd.setCursor(3, 1);
   lcd.print(temp);
-
-  //  вывод градусов
-  lcd.setCursor(10, 1);
-  lcd.print("WF:");
-  lcd.setCursor(13, 1);
-  lcd.print(work_flag);
+  
+  //вывод таймера работы тена в секундах
+  if (ten_timer != 0 and ten_on == 1)
+  {
+    int r_timer = (millis() - ten_timer) / 1000;
+    lcd.setCursor(13, 1);  // Установка курсора
+    lcd.print(r_timer);    // вывод
+  }
 
 }
