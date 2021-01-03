@@ -1,17 +1,66 @@
+/*
+   базовый скетч отработки нажатия кнопки с фильтром дребезга контактов
+   и включением выключением реле / светодиода по нажатию на кнопку
+   к уроку #6
+*/
 
-// the setup function runs once when you press reset or power the board
+#define D_pin 2             // пин двери
+#define door_light_pin 10   // пин мосфета / реле
+
+boolean door = 0;           // флажок режима
+uint32_t doorTimer = 0;
 void setup() {
-  // initialize digital pin LED_BUILTIN as an output.
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(10, OUTPUT);
+  pinMode(D_pin, INPUT_PULLUP);       // кнопка подтянута внутренним резистором (урок 5)
+  pinMode(door_light_pin, OUTPUT);    // пин реле как выход
+
+  Serial.begin(9600);
+
 }
 
-// the loop function runs over and over again forever
 void loop() {
-  digitalWrite(10, HIGH);   // turn the LED on (HIGH is the voltage level)
-  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-  delay(9000);                       // wait for a second
-  digitalWrite(10, LOW);   // turn the LED on (HIGH is the voltage level)
-  digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
-  delay(3000);                       // wait for a second
+  delay(1000);
+
+  door_status();
+
+}
+
+
+void door_status()
+{
+  boolean door_open = digitalRead(D_pin);  // считать текущее положение конечного выключателя (0-закрыт;1-открыт)
+
+  if (door_open && !door && millis() - doorTimer > 100) {
+    door = true;
+    doorTimer = millis();
+    Serial.println("press");
+  }
+  if (!door_open && door && millis() - doorTimer > 100) {
+    door = false;
+    doorTimer = millis();
+    //Serial.println("release");
+  }
+
+
+  Door_light_rele(door);
+  
+  Serial.print("door: ");
+  Serial.println(door);
+
+}
+
+
+//upr_signal - 1 вкл., 0 - выкл
+//реле обратное включение от 0
+void Door_light_rele(boolean upr_signal)
+{
+  boolean invert = 0;
+  
+  if (invert)
+  {
+    digitalWrite(door_light_pin, !upr_signal);
+  }
+  else
+  {
+    digitalWrite(door_light_pin, upr_signal);
+  }
 }

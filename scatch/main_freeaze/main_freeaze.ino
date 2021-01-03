@@ -13,26 +13,32 @@
 LiquidCrystal_I2C lcd(0x27, 16, 2); // Указываем I2C адрес (наиболее распространенное значение),
 //а также параметры экрана (в случае LCD 1602 - 2 строки по 16 символов в каждой
 String author = "legavaz@gmail.com";
-String Version = "NF_02-01-21";
+String Version = "NF_03-01-21";
 
 #define analogPin 0 //пин переменного сопротивление
-#define V_Pin 5     //пин реле вентилятора 12 вольт
 #define K_Pin 3     //пин реле компрессора
 #define T_Pin 2     //пин реле тена
 
+#define D_pin 8             // пин конечник двери
+#define V_Pin 5             // пин мосфета / реле вентилятора 12 вольт
+#define door_light_pin 10   // пин мосфета / реле 12 вольт
+
 //переменные для расчета температуры с термистора
-#define RESIST_BASE 9800   // сопротивление при TEMP_BASE градусах по Цельсию (Ом)
-#define TEMP_BASE 25       // температура, при которой измерено RESIST_BASE (градусов Цельсия)
+#define RESIST_BASE 8210   // сопротивление при TEMP_BASE градусах по Цельсию (Ом)
+#define TEMP_BASE 24       // температура, при которой измерено RESIST_BASE (градусов Цельсия)
 #define RESIST_50K 50000   // точное сопротивление 10к резистора (Ом)
 #define BETA_COEF1 3435
 
 int temp = 0;       //значение текущей температуры
-String s_status = "k-/v-/t-";
+String s_status = "k-/v-/t-/d-";
 int period_ten_timer = 5 * 60; //время работы тэна 5 минут ()
 unsigned long ten_timer; //переменная хранения таймера запуска тэна
 boolean ten_on = 0;
 boolean k_on = 0;
 boolean v_on = 0;
+
+boolean door = 0;           // по умолчанию дверь закрыта
+uint32_t doorTimer = 0;     // для исключения дребезг контактов
 
 boolean Debug = 1; //флаг отладки
 boolean work_flag = 0;
@@ -51,11 +57,14 @@ void setup()
   pinMode(V_Pin, OUTPUT);
   pinMode(K_Pin, OUTPUT);
   pinMode(T_Pin, OUTPUT);
+  pinMode(D_pin, INPUT_PULLUP);       // кнопка подтянута внутренним резистором (урок 5)
+  pinMode(door_light_pin, OUTPUT);    // пин реле как выход
 
-  //принудительно выключаем все реле
+  //принудительно выключаем все реле/мосфеты
   Kompressor_rele(0);
   Ten_warm_rele(0);
   Vent_rele(0);
+  Door_light_rele(0);
 
   reset_arr(); // заполним массив значениями по умолчанию для чистоты расчета
 
@@ -81,8 +90,11 @@ void loop()
     Kompressor(0);
   }
 
+  //проверка открытия двери
+  door_status();
+
   //оформление текущих статусов для информации
-  s_status = "k" + String(k_on) + "/v" + String(v_on) + "/t" + String(ten_on);
+  s_status = "k" + String(k_on) + "/v" + String(v_on) + "/t" + String(ten_on)+"/d" + String(door );
 
   //  вывод отладочной информации
   debug_info();
@@ -207,6 +219,24 @@ void Ten_warm(boolean m_value)
   }
 }
 
+void door_status()
+{
+  boolean door_open = digitalRead(D_pin);  // считать текущее положение конечного выключателя (0-закрыт;1-открыт)
+
+  if (door_open && !door && millis() - doorTimer > 100) {
+    door = true;
+    doorTimer = millis();
+  }
+  if (!door_open && door && millis() - doorTimer > 100) {
+    door = false;
+    doorTimer = millis();
+  }
+
+  Door_light_rele(door);
+
+
+}
+
 //upr_signal - 1 вкл., 0 - выкл
 //реле обратное включение от 0
 void Kompressor_rele(boolean upr_signal)
@@ -259,6 +289,23 @@ void Vent_rele(boolean upr_signal)
   }
 }
 
+//upr_signal - 1 вкл., 0 - выкл
+//реле обратное включение от 0
+void Door_light_rele(boolean upr_signal)
+{
+  boolean invert = 0;
+
+  if (invert)
+  {
+    digitalWrite(door_light_pin, !upr_signal);
+  }
+  else
+  {
+    digitalWrite(door_light_pin, upr_signal);
+  }
+}
+
+
 int return_avg_temp()
 {
   temp = return_temp();
@@ -308,6 +355,9 @@ void debug_info()
     Serial.print("millis(): ");
     Serial.println(millis());
 
+    Serial.print("door: ");
+    Serial.println(door);
+
     //    print_arr();
 
   }
@@ -334,27 +384,25 @@ void lcd_print()
   lcd.clear();
 
   /*ПЕРВАЯ СТРОКА*/
-  
+
   //  вывод статуса
   lcd.setCursor(0, 0);
-  lcd.print("S:");
-  lcd.setCursor(2, 0);
   lcd.print(s_status);
 
   //  вывод рабочего флага
   lcd.setCursor(12, 0);
   lcd.print("WF:");
-  lcd.setCursor(15, 1);
+  lcd.setCursor(15, 0);
   lcd.print(work_flag);
 
   /*ВТОРАЯ СТРОКА*/
 
-    //  вывод градусов
+  //  вывод градусов
   lcd.setCursor(0, 1);
   lcd.print("t:");
   lcd.setCursor(3, 1);
   lcd.print(temp);
-  
+
   //вывод таймера работы тена в секундах
   if (ten_timer != 0 and ten_on == 1)
   {
