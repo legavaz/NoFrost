@@ -13,7 +13,12 @@
 LiquidCrystal_I2C lcd(0x27, 16, 2); // Указываем I2C адрес (наиболее распространенное значение),
 //а также параметры экрана (в случае LCD 1602 - 2 строки по 16 символов в каждой
 String author = "legavaz@gmail.com";
-String Version = "NF_03-01-21";
+String Version = "NF_040121";
+
+#define len_arr 30 //размерность массива 
+int temp_arr[len_arr]; // массив для расчета средней температуры
+int temp_max = -15;  //максимальная температура выключения компрессора и включения тэнов
+int temp_min = -30;  //минимальная температура
 
 #define analogPin 0 //пин переменного сопротивление
 #define K_Pin 3     //пин реле компрессора
@@ -42,12 +47,6 @@ uint32_t doorTimer = 0;     // для исключения дребезг кон
 
 boolean Debug = 1; //флаг отладки
 boolean work_flag = 0;
-
-#define len_arr 30 //размерность массива 
-int temp_arr[len_arr]; // массив для расчета средней температуры
-int temp_max = 30;  //максимальная температура выключения компрессора и включения тэнов
-int temp_min = 25;  //минимальная температура
-
 
 
 // --------- SETUP ----------
@@ -83,18 +82,20 @@ void loop()
   temp = return_avg_temp();
 
   //ОСНОВНАЯ ЛОГИКА ПРОГРАММЫ
-  if (temp >= temp_max) {
-    Kompressor(1);
-  }
-  else if (temp <= temp_min) {
-    Kompressor(0);
+  if (work_flag) {
+    if (temp >= temp_max) {
+      Kompressor(1);
+    }
+    else if (temp <= temp_min) {
+      Kompressor(0);
+    }
   }
 
   //проверка открытия двери
   door_status();
 
   //оформление текущих статусов для информации
-  s_status = "k" + String(k_on) + "/v" + String(v_on) + "/t" + String(ten_on)+"/d" + String(door );
+  s_status = "k" + String(k_on) + "/v" + String(v_on) + "/t" + String(ten_on) + "/d" + String(door );
 
   //  вывод отладочной информации
   debug_info();
@@ -221,7 +222,7 @@ void Ten_warm(boolean m_value)
 
 void door_status()
 {
-  boolean door_open = digitalRead(D_pin);  // считать текущее положение конечного выключателя (0-закрыт;1-открыт)
+  boolean door_open = !digitalRead(D_pin);  // считать текущее положение конечного выключателя (1-закрыт;0-открыт)
 
   if (door_open && !door && millis() - doorTimer > 100) {
     door = true;
@@ -337,8 +338,8 @@ void debug_info()
   if (Debug)
   {
 
-    Serial.print("status: ");
-    Serial.println(s_status);
+//    Serial.print("status: ");
+//    Serial.println(s_status);
 
     Serial.print("temp: ");
     Serial.println(temp);
@@ -352,13 +353,13 @@ void debug_info()
     //    Serial.println(ten_on);
     Serial.print("ten_timer: ");
     Serial.println(ten_timer);
-    Serial.print("millis(): ");
-    Serial.println(millis());
+//    Serial.print("millis(): ");
+//    Serial.println(millis());
 
-    Serial.print("door: ");
-    Serial.println(door);
+//    Serial.print("door: ");
+//    Serial.println(door);
 
-    //    print_arr();
+    print_arr();
 
   }
 
@@ -370,7 +371,7 @@ void lcd_init()
   lcd.backlight();            // Подключение подсветки
 
   lcd.setCursor(0, 0);        // Установка курсора в начало первой строки
-  lcd.print(Version);         // вывод версии скетча
+  lcd.print(Version+" "+String(temp_min)+":"+String(temp_max));         // вывод версии скетча + настройи мин макс
 
   lcd.setCursor(0, 1);        // Установка курсора в начало первой строки
   lcd.print(author);         // вывод авторства
