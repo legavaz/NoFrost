@@ -2,23 +2,23 @@
   Lega_dvi:23-12-2020
   скетч создан для работы холодилника по принципам NOFROST
   Репозиторий: https://github.com/legavaz/NoFrost.git
-
 */
 
 // ------- БИБЛИОТЕКИ -------
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h> // Подключение библиотеки
+#include <Stepper.h>
 
 // ------- ПЕРЕМЕННЫЕ -------
 LiquidCrystal_I2C lcd(0x27, 16, 2); // Указываем I2C адрес (наиболее распространенное значение),
 //а также параметры экрана (в случае LCD 1602 - 2 строки по 16 символов в каждой
 String author = "legavaz@gmail.com";
-String Version = "NF_040121";
+String Version = "NF050121";
 
 #define len_arr 30 //размерность массива 
 int temp_arr[len_arr]; // массив для расчета средней температуры
 int temp_max = -15;  //максимальная температура выключения компрессора и включения тэнов
-int temp_min = -30;  //минимальная температура
+int temp_min = -25;  //минимальная температура
 
 #define analogPin 0 //пин переменного сопротивление
 #define K_Pin 3     //пин реле компрессора
@@ -26,7 +26,7 @@ int temp_min = -30;  //минимальная температура
 
 #define D_pin 8             // пин конечник двери
 #define V_Pin 5             // пин мосфета / реле вентилятора 12 вольт
-#define door_light_pin 10   // пин мосфета / реле 12 вольт
+#define door_light_pin 7   // пин мосфета / освещение 12 вольт
 
 //переменные для расчета температуры с термистора
 #define RESIST_BASE 8210   // сопротивление при TEMP_BASE градусах по Цельсию (Ом)
@@ -36,18 +36,27 @@ int temp_min = -30;  //минимальная температура
 
 int temp = 0;       //значение текущей температуры
 String s_status = "k-/v-/t-/d-";
+
+//Тен
 int period_ten_timer = 5 * 60; //время работы тэна 5 минут ()
 unsigned long ten_timer; //переменная хранения таймера запуска тэна
-boolean ten_on = 0;
-boolean k_on = 0;
-boolean v_on = 0;
 
-boolean door = 0;           // по умолчанию дверь закрыта
+//ФЛАГИ работы
+boolean ten_on = 0;         //флаг работы тена
+boolean k_on = 0;           //флаг работы компрессора
+boolean v_on = 0;           //флаг работы вентилятора
+boolean door = 0;           // ФЛАГ по умолчанию дверь закрыта
 uint32_t doorTimer = 0;     // для исключения дребезг контактов
 
+//ЗАСЛОНКА
+// initialize the stepper library on pins (74 63) - попарно катушкам (прозвониваются)
+//210 - скорость ш.двиг. (подбирается индивидуально, по умолчанию 200)
+Stepper myStepper(210, 9, 10, 11, 12);
+boolean flap_close = 1; //флаг открытия заслонки
+
+//ПРОЧЕЕ
 boolean Debug = 1; //флаг отладки
 boolean work_flag = 0;
-
 
 // --------- SETUP ----------
 void setup()
@@ -56,14 +65,16 @@ void setup()
   pinMode(V_Pin, OUTPUT);
   pinMode(K_Pin, OUTPUT);
   pinMode(T_Pin, OUTPUT);
-  pinMode(D_pin, INPUT_PULLUP);       // кнопка подтянута внутренним резистором (урок 5)
+  pinMode(D_pin, INPUT_PULLUP);       // подтянут внутренним резистором
   pinMode(door_light_pin, OUTPUT);    // пин реле как выход
+  myStepper.setSpeed(60);
 
   //принудительно выключаем все реле/мосфеты
   Kompressor_rele(0);
   Ten_warm_rele(0);
   Vent_rele(0);
   Door_light_rele(0);
+  flap(1);
 
   reset_arr(); // заполним массив значениями по умолчанию для чистоты расчета
 
@@ -89,19 +100,22 @@ void loop()
     else if (temp <= temp_min) {
       Kompressor(0);
     }
+    else     {
+      Ten_warm(0);
+    }
   }
 
   //проверка открытия двери
   door_status();
 
   //оформление текущих статусов для информации
-  s_status = "k" + String(k_on) + "/v" + String(v_on) + "/t" + String(ten_on) + "/d" + String(door );
-
-  //  вывод отладочной информации
-  debug_info();
+  s_status = "k" + String(k_on) + "v" + String(v_on) + "t" + String(ten_on) + "d" + String(door ) + "f" + String(flap_close );
 
   //вывод информации на экран
   lcd_print();
+
+  //  вывод отладочной информации
+  debug_info();
 
 }
 
@@ -118,7 +132,6 @@ int aver_temp()
       summ = summ + temp_arr[i];
       parity += 1;
     }
-
   }
 
   //рабочий режим включается при 90% накоплении статистики по температуре
@@ -150,7 +163,6 @@ void print_arr()
   }
 
   Serial.println();
-
 }
 
 void add_array(int m_temp)
@@ -163,25 +175,24 @@ void add_array(int m_temp)
 
   temp_arr[len_arr - 1] = m_temp;
 
-
 }
 
 
 void Kompressor(boolean m_value)
 {
 
-  //    # сигнал на отключение компрессора
-  //    # до этого компрессор был включен
-  //    # и тен не работал
+  //# сигнал на отключение компрессора
+  //# до этого компрессор был включен
+  //# и тен не работал
   if (k_on == 1 and m_value == 0 and ten_on == 0)
   {
     Kompressor_rele(m_value);
     Vent_rele(0);
     Ten_warm(1);
   }
-  //    # сигнал на включение компрессора
-  //    # до этого компрессор был выключен
-  //    # и тен не работал
+  //# сигнал на включение компрессора
+  //# до этого компрессор был выключен
+  //# и тен не работал
   else if (k_on == 0 and m_value == 1 and ten_on == 0)
   {
     Kompressor_rele(m_value);
@@ -213,6 +224,7 @@ void Ten_warm(boolean m_value)
       }
       if (r_timer >= period_ten_timer)
       {
+        ten_timer = 0;
         Ten_warm_rele(m_value);
         Vent_rele(1);
       }
@@ -227,15 +239,15 @@ void door_status()
   if (door_open && !door && millis() - doorTimer > 100) {
     door = true;
     doorTimer = millis();
+    Door_light_rele(door);
+    flap(1);
   }
   if (!door_open && door && millis() - doorTimer > 100) {
     door = false;
     doorTimer = millis();
+    Door_light_rele(door);
+    flap(-1);
   }
-
-  Door_light_rele(door);
-
-
 }
 
 //upr_signal - 1 вкл., 0 - выкл
@@ -306,6 +318,32 @@ void Door_light_rele(boolean upr_signal)
   }
 }
 
+void flap(int dir)
+{
+
+  //  Serial.print("dir: ");
+  //  Serial.println(dir);
+  //  Serial.print("flap_close: ");
+  //  Serial.println(flap_close);
+
+  int steps = 1700;
+
+  if (dir == 1 and flap_close == 0)
+  {
+    //    Serial.println("Закрываем");
+    myStepper.step(steps * dir);
+    flap_close = !flap_close;
+  }
+  else if (dir == -1 and flap_close == 1)
+  {
+    //    Serial.println("открываем");
+    myStepper.step(steps * dir);
+    flap_close = !flap_close;
+  }
+
+  delay(100);
+}
+
 
 int return_avg_temp()
 {
@@ -338,8 +376,8 @@ void debug_info()
   if (Debug)
   {
 
-//    Serial.print("status: ");
-//    Serial.println(s_status);
+    //    Serial.print("status: ");
+    //    Serial.println(s_status);
 
     Serial.print("temp: ");
     Serial.println(temp);
@@ -353,11 +391,11 @@ void debug_info()
     //    Serial.println(ten_on);
     Serial.print("ten_timer: ");
     Serial.println(ten_timer);
-//    Serial.print("millis(): ");
-//    Serial.println(millis());
+    //    Serial.print("millis(): ");
+    //    Serial.println(millis());
 
-//    Serial.print("door: ");
-//    Serial.println(door);
+    //    Serial.print("door: ");
+    //    Serial.println(door);
 
     print_arr();
 
@@ -371,7 +409,7 @@ void lcd_init()
   lcd.backlight();            // Подключение подсветки
 
   lcd.setCursor(0, 0);        // Установка курсора в начало первой строки
-  lcd.print(Version+" "+String(temp_min)+":"+String(temp_max));         // вывод версии скетча + настройи мин макс
+  lcd.print(Version + " " + String(temp_min) + ":" + String(temp_max)); // вывод версии скетча + настройи мин макс
 
   lcd.setCursor(0, 1);        // Установка курсора в начало первой строки
   lcd.print(author);         // вывод авторства
@@ -391,8 +429,8 @@ void lcd_print()
   lcd.print(s_status);
 
   //  вывод рабочего флага
-  lcd.setCursor(12, 0);
-  lcd.print("WF:");
+  lcd.setCursor(13, 0);
+  lcd.print("w:");
   lcd.setCursor(15, 0);
   lcd.print(work_flag);
 
