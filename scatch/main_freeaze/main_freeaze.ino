@@ -7,18 +7,26 @@
 // ------- БИБЛИОТЕКИ -------
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h> // Подключение библиотеки
-#include <Stepper.h>
+//#include <Stepper.h>
 
 // ------- ПЕРЕМЕННЫЕ -------
 LiquidCrystal_I2C lcd(0x27, 16, 2); // Указываем I2C адрес (наиболее распространенное значение),
 //а также параметры экрана (в случае LCD 1602 - 2 строки по 16 символов в каждой
 String author = "legavaz@gmail.com";
-String Version = "NF050121";
+String Version = "NF080121";
 
 #define len_arr 30 //размерность массива 
 int temp_arr[len_arr]; // массив для расчета средней температуры
+
+//для тестирования
+//int temp_max = 100;  //максимальная температура выключения компрессора и включения тэнов
+//int temp_min = 30;  //минимальная температура
+//int period_ten_timer = 5; //время работы тэна 5 минут ()
+
+//для работы
 int temp_max = -15;  //максимальная температура выключения компрессора и включения тэнов
 int temp_min = -25;  //минимальная температура
+int period_ten_timer = 5 * 60; //время работы тэна 5 минут ()
 
 #define analogPin 0 //пин переменного сопротивление
 #define K_Pin 3     //пин реле компрессора
@@ -35,11 +43,10 @@ int temp_min = -25;  //минимальная температура
 #define BETA_COEF1 3435
 
 int temp = 0;       //значение текущей температуры
+unsigned long ten_timer; //переменная хранения таймера запуска тэна
 String s_status = "k-/v-/t-/d-";
 
-//Тен
-int period_ten_timer = 5 * 60; //время работы тэна 5 минут ()
-unsigned long ten_timer; //переменная хранения таймера запуска тэна
+
 
 //ФЛАГИ работы
 boolean ten_on = 0;         //флаг работы тена
@@ -51,8 +58,8 @@ uint32_t doorTimer = 0;     // для исключения дребезг кон
 //ЗАСЛОНКА
 // initialize the stepper library on pins (74 63) - попарно катушкам (прозвониваются)
 //210 - скорость ш.двиг. (подбирается индивидуально, по умолчанию 200)
-Stepper myStepper(210, 9, 10, 11, 12);
-boolean flap_close = 1; //флаг открытия заслонки
+//Stepper myStepper(210, 9, 10, 11, 12);
+//boolean flap_close = 1; //флаг открытия заслонки
 
 //ПРОЧЕЕ
 boolean Debug = 1; //флаг отладки
@@ -67,14 +74,14 @@ void setup()
   pinMode(T_Pin, OUTPUT);
   pinMode(D_pin, INPUT_PULLUP);       // подтянут внутренним резистором
   pinMode(door_light_pin, OUTPUT);    // пин реле как выход
-  myStepper.setSpeed(60);
+//  myStepper.setSpeed(60);
 
   //принудительно выключаем все реле/мосфеты
   Kompressor_rele(0);
   Ten_warm_rele(0);
   Vent_rele(0);
   Door_light_rele(0);
-  flap(1);
+//  flap(1);
 
   reset_arr(); // заполним массив значениями по умолчанию для чистоты расчета
 
@@ -109,7 +116,8 @@ void loop()
   door_status();
 
   //оформление текущих статусов для информации
-  s_status = "k" + String(k_on) + "v" + String(v_on) + "t" + String(ten_on) + "d" + String(door ) + "f" + String(flap_close );
+//  s_status = "k" + String(k_on) + "v" + String(v_on) + "t" + String(ten_on) + "d" + String(door ) + "f" + String(flap_close );
+  s_status = "k" + String(k_on) + "v" + String(v_on) + "t" + String(ten_on) + "d" + String(door ) ;
 
   //вывод информации на экран
   lcd_print();
@@ -240,13 +248,14 @@ void door_status()
     door = true;
     doorTimer = millis();
     Door_light_rele(door);
-    flap(1);
+    lcd.init(); 
+//    flap(1);
   }
   if (!door_open && door && millis() - doorTimer > 100) {
     door = false;
     doorTimer = millis();
     Door_light_rele(door);
-    flap(-1);
+//    flap(-1);
   }
 }
 
@@ -254,7 +263,7 @@ void door_status()
 //реле обратное включение от 0
 void Kompressor_rele(boolean upr_signal)
 {
-  boolean invert = 1;
+  boolean invert = 0;
   k_on = upr_signal;
 
   if (invert)
@@ -318,31 +327,31 @@ void Door_light_rele(boolean upr_signal)
   }
 }
 
-void flap(int dir)
-{
-
-  //  Serial.print("dir: ");
-  //  Serial.println(dir);
-  //  Serial.print("flap_close: ");
-  //  Serial.println(flap_close);
-
-  int steps = 1700;
-
-  if (dir == 1 and flap_close == 0)
-  {
-    //    Serial.println("Закрываем");
-    myStepper.step(steps * dir);
-    flap_close = !flap_close;
-  }
-  else if (dir == -1 and flap_close == 1)
-  {
-    //    Serial.println("открываем");
-    myStepper.step(steps * dir);
-    flap_close = !flap_close;
-  }
-
-  delay(100);
-}
+//void flap(int dir)
+//{
+//
+//  //  Serial.print("dir: ");
+//  //  Serial.println(dir);
+//  //  Serial.print("flap_close: ");
+//  //  Serial.println(flap_close);
+//
+//  int steps = 1700;
+//
+//  if (dir == 1 and flap_close == 0)
+//  {
+//    //    Serial.println("Закрываем");
+//    myStepper.step(steps * dir);
+//    flap_close = !flap_close;
+//  }
+//  else if (dir == -1 and flap_close == 1)
+//  {
+//    //    Serial.println("открываем");
+//    myStepper.step(steps * dir);
+//    flap_close = !flap_close;
+//  }
+//
+//  delay(100);
+//}
 
 
 int return_avg_temp()
