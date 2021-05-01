@@ -13,9 +13,9 @@
 LiquidCrystal_I2C lcd(0x27, 16, 2); // Указываем I2C адрес (наиболее распространенное значение),
 //а также параметры экрана (в случае LCD 1602 - 2 строки по 16 символов в каждой
 String author = "legavaz@gmail.com";
-String Version = "NF080121";
+String Version = "NF010521";
 
-#define len_arr 30 //размерность массива 
+#define len_arr 60 //размерность массива 
 int temp_arr[len_arr]; // массив для расчета средней температуры
 
 //для тестирования
@@ -24,9 +24,12 @@ int temp_arr[len_arr]; // массив для расчета средней те
 //int period_ten_timer = 5; //время работы тэна 5 минут ()
 
 //для работы
-int temp_max = -15;  //максимальная температура выключения компрессора и включения тэнов
+int temp_max = -10;  //максимальная температура выключения компрессора и включения тэнов
 int temp_min = -25;  //минимальная температура
-int period_ten_timer = 5 * 60; //время работы тэна 5 минут ()
+
+//время работы тэна 5 минут ()
+//01-05-21 - увеличил до 15 минут
+int period_ten_timer = 15 * 60; 
 
 #define analogPin 0 //пин переменного сопротивление
 #define K_Pin 3     //пин реле компрессора
@@ -45,7 +48,6 @@ int period_ten_timer = 5 * 60; //время работы тэна 5 минут (
 int temp = 0;       //значение текущей температуры
 unsigned long ten_timer; //переменная хранения таймера запуска тэна
 String s_status = "k-/v-/t-/d-";
-
 
 
 //ФЛАГИ работы
@@ -94,7 +96,8 @@ void setup()
 // ---------- LOOP ----------
 void loop()
 {
-  delay(1000);
+//  delay(1000);
+  delay(500);
 
   //чтение температуры
   temp = return_avg_temp();
@@ -282,7 +285,7 @@ void Kompressor_rele(boolean upr_signal)
 //реле обратное включение от 0
 void Ten_warm_rele(boolean upr_signal)
 {
-  boolean invert = 1;
+  boolean invert = 0;
   ten_on = upr_signal;
   if (invert)
   {
